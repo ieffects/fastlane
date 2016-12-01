@@ -9,7 +9,7 @@ module Fastlane
       UI.user_error!("platform must be a string") unless platform.kind_of?(String) or platform.nil?
       UI.user_error!("parameters must be a hash") unless parameters.kind_of?(Hash) or parameters.nil?
 
-      ff = Fastlane::FastFile.new(Fastlane::FastlaneFolder.fastfile_path)
+      ff = Fastlane::FastFile.new(FastlaneCore::FastlaneFolder.fastfile_path)
 
       is_platform = false
       begin
@@ -37,6 +37,12 @@ module Fastlane
       end
 
       platform, lane = choose_lane(ff, platform) unless lane
+
+      # xcodeproj has a bug in certain versions that causes it to change directories
+      # and not return to the original working directory
+      # https://github.com/CocoaPods/Xcodeproj/issues/426
+      # Setting this environment variable causes xcodeproj to work around the problem
+      ENV["FORK_XCODE_WRITING"] = "true" unless platform == 'android'
 
       load_dot_env(env)
 
@@ -93,9 +99,13 @@ module Fastlane
 
       rows = []
       actions.each_with_index do |current, i|
+        is_error_step = !current[:error].to_s.empty?
+
         name = current[:name][0..60]
-        name = name.red unless current[:error].to_s.empty?
-        rows << [i + 1, name, current[:time].to_i]
+        name = name.red if is_error_step
+        index = i + 1
+        index = "💥" if is_error_step
+        rows << [index, name, current[:time].to_i]
       end
 
       puts ""
@@ -159,13 +169,13 @@ module Fastlane
       Actions.lane_context[Actions::SharedValues::ENVIRONMENT] = env if env
 
       # Making sure the default '.env' and '.env.default' get loaded
-      env_file = File.join(Fastlane::FastlaneFolder.path || "", '.env')
-      env_default_file = File.join(Fastlane::FastlaneFolder.path || "", '.env.default')
+      env_file = File.join(FastlaneCore::FastlaneFolder.path || "", '.env')
+      env_default_file = File.join(FastlaneCore::FastlaneFolder.path || "", '.env.default')
       Dotenv.load(env_file, env_default_file)
 
       # Loads .env file for the environment passed in through options
       if env
-        env_file = File.join(Fastlane::FastlaneFolder.path || "", ".env.#{env}")
+        env_file = File.join(FastlaneCore::FastlaneFolder.path || "", ".env.#{env}")
         UI.success "Loading from '#{env_file}'"
         Dotenv.overload(env_file)
       end

@@ -195,7 +195,6 @@ while [ "$1" != "" ]; do
             BUNDLE_VERSION="$1"
             ;;
         --use-app-entitlements )
-            shift
             USE_APP_ENTITLEMENTS="YES"
             ;;
         --keychain-path )
@@ -566,7 +565,7 @@ function resign {
             # Map to the new bundle id
             NEW_REF_BUNDLE_ID=`bundle_id_for_provison "$REF_PROVISION"`
             # Change if not the same
-            if [ "$REF_BUNDLE_ID" != "$NEW_REF_BUNDLE_ID" ];
+            if [ "$REF_BUNDLE_ID" != "$NEW_REF_BUNDLE_ID" && ! "$NEW_REF_BUNDLE_ID" =~ \* ];
             then
                 log "Updating nested app or extension reference for ${key} key from ${REF_BUNDLE_ID} to ${NEW_REF_BUNDLE_ID}"
                 `PlistBuddy -c "Set ${key} $NEW_REF_BUNDLE_ID" "$APP_PATH/Info.plist"`
@@ -690,7 +689,10 @@ function resign {
             PlistBuddy -c "Delete $KEY" "$PATCHED_ENTITLEMENTS" 2>/dev/null
 
             # Add new entry to patched entitlements
-            plutil -insert "$KEY" -xml "$ENTITLEMENTS_VALUE" "$PATCHED_ENTITLEMENTS"
+            # plutil needs dots in the key path to be escaped (e.g. com\.apple\.security\.application-groups)
+            # otherwise it interprets they key path as nested keys
+            PLUTIL_KEY=`echo "$KEY" | sed 's/\./\\\\./g'`
+            plutil -insert "$PLUTIL_KEY" -xml "$ENTITLEMENTS_VALUE" "$PATCHED_ENTITLEMENTS"
 
             # Patch the ID value if specified
             if [[ "$ID_TYPE" == "APP_ID" ]]; then

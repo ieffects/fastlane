@@ -89,10 +89,12 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :api_key,
                                        env_name: "SENTRY_API_KEY",
                                        description: "API key for Sentry",
+                                       sensitive: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :auth_token,
                                        env_name: "SENTRY_AUTH_TOKEN",
                                        description: "Authentication token for Sentry",
+                                       sensitive: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :org_slug,
                                        env_name: "SENTRY_ORG_SLUG",
@@ -136,6 +138,21 @@ module Fastlane
 
       def self.is_supported?(platform)
         platform == :ios
+      end
+
+      def self.example_code
+        [
+          'upload_symbols_to_sentry(
+            auth_token: "...",
+            org_slug: "...",
+            project_slug: "...",
+            dsym_path: "./App.dSYM.zip"
+          )'
+        ]
+      end
+
+      def self.category
+        :misc
       end
     end
   end

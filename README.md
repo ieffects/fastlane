@@ -10,6 +10,8 @@ fastlane
 [![Gem](https://img.shields.io/gem/v/fastlane.svg?style=flat)](http://rubygems.org/gems/fastlane)
 [![Build Status](https://img.shields.io/circleci/project/fastlane/fastlane/master.svg?style=flat)](https://circleci.com/gh/fastlane/fastlane)
 
+#### ✨ Check out [docs.fastlane.tools](https://docs.fastlane.tools) on how to get started with fastlane ✨
+
 `fastlane` is a tool for iOS, Mac, and Android developers to automate tedious tasks like generating screenshots, dealing with provisioning profiles, and releasing your application.
 
 Use a lane to define your process:
@@ -30,7 +32,7 @@ Then to deploy a new 'beta' version of your app just run
 
               |  fastlane
 --------------------------|------------------------------------------------------------
-:sparkles: | Connect iOS, Mac, and Android build tools into one workflow (both `fastlane` tools and third party tools)
+:sparkles: | Connect iOS, Mac, and Android build tools into one workflow (both _fastlane_ tools and third party tools)
 :monorail: | Define different `deployment lanes` for App Store deployment, beta builds, or testing
 :ship: | Deploy from any computer, including a CI server
 :wrench: | Extend and customise functionality
@@ -47,34 +49,47 @@ Then to deploy a new 'beta' version of your app just run
 :computer: | Support for iOS, Mac, and Android apps
 :octocat: | Full Git and Mercurial support
 
+<hr />
+<h4 align="center">
+  Check out the new <a href="https://docs.fastlane.tools/">fastlane docs</a>
+</h4>
+<hr />
+
 ##### Like this tool? [Be the first to know about updates and new fastlane tools](https://tinyletter.com/krausefx).
 
 ## Installation
-
-    sudo gem install fastlane --verbose
-
 Make sure you have the latest version of the Xcode command line tools installed:
 
     xcode-select --install
 
-If you experience slow launch times of fastlane, try running:
+### Choose your installation method:
 
-    gem cleanup
-
-**System Requirements:** `fastlane` requires macOS or Linux with Ruby 2.0.0 or above
-
-If you'd like to take a look at a project already using `fastlane` check out [fastlane-examples](https://github.com/fastlane/examples) which includes `fastlane` setups by Wikipedia, Product Hunt, MindNode, and more.
+<table width="100%" >
+<tr>
+<th width="33%"><a href="http://brew.sh">Homebrew</a></td>
+<th width="33%">Installer Script</td>
+<th width="33%">Rubygems</td>
+</tr>
+<tr>
+<td width="33%" align="center">macOS</td>
+<td width="33%" align="center">macOS</td>
+<td width="33%" align="center">macOS or Linux with Ruby 2.0.0 or above</td>
+</tr>
+<tr> 
+<td width="33%"><code>brew cask install fastlane</code></td>
+<td width="33%"><a href="https://kits-crashlytics-com.s3.amazonaws.com/fastlane/standalone/latest.zip">Download the zip file</a>. Then double click on the <code>install</code> script (or run it in a terminal window).</td>
+<td width="33%"><code>sudo gem install fastlane -NV</code></td>
+</tr>
+</table>
 
 ## Quick Start
 
-`fastlane`'s setup assistant creates all the necessary files to get you started, using existing app metadata from iTunes Connect or Google Play.
+Get started distributing your first app with fastlane within minutes:
 
-- `cd [your_project_folder]`
-- `fastlane init`
-- Follow the setup assistant to configure your app
-- Further customise the Ruby based `Fastfile` with additional [actions](https://github.com/fastlane/fastlane/blob/master/fastlane/docs/Actions.md)
+[Create your first Fastfile](https://fabric.io/features/distribution?utm_campaign=github_readme)
 
-For more details, check out the [fastlane guide](https://github.com/fastlane/fastlane/blob/master/fastlane/docs/Guide.md).
+Want to learn more? Explore guides for [iOS](https://docs.fastlane.tools/getting-started/ios/setup/)
+ or [Android](https://docs.fastlane.tools/getting-started/android/setup/).
 
 ## Available Commands
 
@@ -89,6 +104,16 @@ Typically you'll use `fastlane` by triggering individual lanes:
 - `fastlane lanes`: Lists all available lanes with description
 - `fastlane list`: Lists all available lanes without description
 - `fastlane new_action`: Create a new action *(integration)* for fastlane
+- `fastlane env`: Print out the fastlane ruby environment when submitting an issue
+
+
+If you'd like to take a look at a project already using `fastlane` check out [fastlane-examples](https://github.com/fastlane/examples) which includes `fastlane` setups by Wikipedia, Product Hunt, MindNode, and more.
+
+<hr />
+<h4 align="center">
+  Check out the new <a href="https://docs.fastlane.tools/">fastlane docs</a>
+</h4>
+<hr />
 
 ## [`fastlane`](https://fastlane.tools) Toolchain
 
@@ -96,7 +121,7 @@ In addition to `fastlane`'s commands, you also have access to these `fastlane` t
 
 - [`deliver`](https://github.com/fastlane/fastlane/tree/master/deliver): Upload screenshots, metadata, and your app to the App Store
 - [`supply`](https://github.com/fastlane/fastlane/tree/master/supply): Upload your Android app and its metadata to Google Play
-- [`snapshot`](https://github.com/fastlane/fastlane/tree/master/snapshot): Automate taking localized screenshots of your iOS app on every device
+- [`snapshot`](https://github.com/fastlane/fastlane/tree/master/snapshot): Automate taking localized screenshots of your iOS and tvOS apps on every device
 - [`screengrab`](https://github.com/fastlane/fastlane/tree/master/screengrab): Automate taking localized screenshots of your Android app on every device
 - [`frameit`](https://github.com/fastlane/fastlane/tree/master/frameit): Quickly put your screenshots into the right device frames
 - [`pem`](https://github.com/fastlane/fastlane/tree/master/pem): Automatically generate and renew your push notification profiles

@@ -253,6 +253,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :password,
                                        env_name: "FL_XCODE_SERVER_GET_ASSETS_PASSWORD",
                                        description: "Password for your Xcode Server",
+                                       sensitive: true,
                                        optional: true,
                                        default_value: ""),
           FastlaneCore::ConfigItem.new(key: :target_folder,
@@ -287,7 +288,20 @@ module Fastlane
       end
 
       def self.is_supported?(platform)
-        true
+        [:ios, :mac].include? platform
+      end
+
+      def self.example_code
+        [
+          'xcode_server_get_assets(
+            host: "10.99.0.59", # Specify Xcode Server\'s Host or IP Address
+            bot_name: "release-1.3.4" # Specify the particular Bot
+          )'
+        ]
+      end
+
+      def self.category
+        :testing
       end
     end
   end

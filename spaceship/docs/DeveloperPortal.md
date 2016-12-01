@@ -41,16 +41,20 @@ Currently available services include (all require the `Spaceship.app_service.` p
 
 ```
 app_group.(on|off)
+apple_pay.(on|off)
 associated_domains.(on|off)
 data_protection.(complete|unless_open|until_first_auth|off)
+game_center.(on|off)
 health_kit.(on|off)
 home_kit.(on|off)
 wireless_accessory.(on|off)
 icloud.(on|off)
 cloud_kit.(xcode5_compatible|cloud_kit)
+in_app_purchase.(on|off)
 inter_app_audio.(on|off)
 passbook.(on|off)
 push_notification.(on|off)
+siri_kit.(on|off)
 vpn_configuration.(on|off)
 ```
 
@@ -121,6 +125,14 @@ dev_push_certs = Spaceship.certificate.development_push.all
 
 # Download a push profile
 cert_content = dev_push_certs.first.download
+
+# Creating a push certificate
+
+# Create a new certificate signing request
+csr, pkey = Spaceship.certificate.create_certificate_signing_request
+
+# Use the signing request to create a new push certificate
+Spaceship.certificate.production_push.create!(csr: csr, bundle_id: "com.krausefx.app")
 ```
 
 ### Create a Certificate
@@ -131,9 +143,6 @@ csr, pkey = Spaceship.certificate.create_certificate_signing_request
 
 # Use the signing request to create a new distribution certificate
 Spaceship.certificate.production.create!(csr: csr)
-
-# Use the signing request to create a new push certificate
-Spaceship.certificate.production_push.create!(csr: csr, bundle_id: "com.krausefx.app")
 ```
 
 ## Provisioning Profiles
@@ -146,17 +155,29 @@ Spaceship.certificate.production_push.create!(csr: csr, bundle_id: "com.krausefx
 # Get all available provisioning profiles
 profiles = Spaceship.provisioning_profile.all
 
-# Get all App Store profiles
-profiles_appstore = Spaceship.provisioning_profile.app_store.all
+# Get all App Store and Ad Hoc profiles
+# Both app_store.all and ad_hoc.all return the same
+# This is the case since September 2016, since the API has changed
+# and there is no fast way to get the type when fetching the profiles
+profiles_appstore_adhoc = Spaceship.provisioning_profile.app_store.all
+profiles_appstore_adhoc = Spaceship.provisioning_profile.ad_hoc.all
 
-# Get all AdHoc profiles
-profiles_adhoc = Spaceship.provisioning_profile.ad_hoc.all
+# To distinguish between App Store and Ad Hoc profiles use
+adhoc_only = profiles_appstore_adhoc.find_all do |current_profile|
+  current_profile.is_adhoc?
+end
 
 # Get all Development profiles
 profiles_dev = Spaceship.provisioning_profile.development.all
 
 # Fetch all profiles for a specific app identifier for the App Store
 filtered_profiles = Spaceship.provisioning_profile.app_store.find_by_bundle_id("com.krausefx.app")
+
+# Check if a provisioning profile is valid
+profile.valid?
+
+# Verify that the certificate of the provisioning profile is valid
+profile.certificate_valid?
 
 ##### Downloading #####
 
@@ -193,7 +214,7 @@ File.write("NewProfile.mobileprovision", profile.download)
 ```ruby
 # Select all 'Invalid' or 'Expired' provisioning profiles
 broken_profiles = Spaceship.provisioning_profile.all.find_all do |profile|
-  # the below could be replaced with `!profile.valid?`, which takes longer but also verifies the code signing identity
+  # the below could be replaced with `!profile.valid? || !profile.certificate_valid?`, which takes longer but also verifies the code signing identity
   (profile.status == "Invalid" or profile.status == "Expired")
 end
 
@@ -203,13 +224,28 @@ broken_profiles.each do |profile|
 end
 
 # or to do the same thing, just more Ruby like
-Spaceship.provisioning_profile.all.find_all { |p| !p.valid? }.map(&:repair!)
+Spaceship.provisioning_profile.all.find_all { |p| !p.valid? || !p.certificate_valid? }.map(&:repair!)
 ```
 
 ## Devices
 
 ```ruby
+# Get all enabled devices
 all_devices = Spaceship.device.all
+
+# Disable first device
+all_devices.first.disable!
+
+# Find disabled device and enable it
+Spaceship.device.find_by_udid("44ee59893cb...", include_disabled: true).enable!
+
+# Get list of all devices, including disabled ones, and filter the result to only include disabled devices use enabled? or disabled? methods
+disabled_devices = Spaceship.device.all(include_disabled: true).select do |device|
+  !device.enabled?
+end
+
+# or to do the same thing, just more Ruby like with disabled? method
+disabled_devices = Spaceship.device.all(include_disabled: true).select(&:disabled?)
 
 # Register a new device
 Spaceship.device.create!(name: "Private iPhone 6", udid: "5814abb3...")

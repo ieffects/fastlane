@@ -14,6 +14,7 @@ module Fastlane
         command = "swiftlint #{params[:mode]}"
         command << " --strict" if params[:strict]
         command << " --config #{params[:config_file].shellescape}" if params[:config_file]
+        command << " --reporter #{params[:reporter]}" if params[:reporter]
 
         if params[:files]
           if version < Gem::Version.new('0.5.1') and !Helper.test?
@@ -72,6 +73,10 @@ module Fastlane
                                                     don't fail the build (true/false)",
                                        default_value: false,
                                        is_string: false,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :reporter,
+                                       description: 'Choose output reporter',
+                                       is_string: true,
                                        optional: true)
         ]
       end
@@ -88,6 +93,25 @@ module Fastlane
 
       def self.is_supported?(platform)
         [:ios, :mac].include?(platform)
+      end
+
+      def self.example_code
+        [
+          'swiftlint(
+            mode: :lint,                          # SwiftLint mode: :lint (default) or :autocorrect
+            output_file: "swiftlint.result.json", # The path of the output file (optional)
+            config_file: ".swiftlint-ci.yml",     # The path of the configuration file (optional)
+            files: [                              # List of files to process (optional)
+              "AppDelegate.swift",
+              "path/to/project/Model.swift"
+            ],
+            ignore_exit_status: true              # Allow fastlane to continue even if SwiftLint returns a non-zero exit status
+          )'
+        ]
+      end
+
+      def self.category
+        :testing
       end
 
       def self.handle_swiftlint_error(ignore_exit_status, exit_status)

@@ -102,18 +102,23 @@ module Fastlane
         'Upload a new build to TestFairy'
       end
 
+      def self.details
+        "You can retrieve your API key on [your settings page](https://free.testfairy.com/settings/)"
+      end
+
       def self.available_options
         [
           # required
           FastlaneCore::ConfigItem.new(key: :api_key,
                                        env_name: "FL_TESTFAIRY_API_KEY", # The name of the environment variable
                                        description: "API Key for TestFairy", # a short description of this parameter
+                                       sensitive: true,
                                        verify_block: proc do |value|
                                          UI.user_error!("No API key for TestFairy given, pass using `api_key: 'key'`") unless value.to_s.length > 0
                                        end),
           FastlaneCore::ConfigItem.new(key: :ipa,
                                        env_name: 'TESTFAIRY_IPA_PATH',
-                                       description: 'Path to your IPA file. Optional if you use the `gym` or `xcodebuild` action',
+                                       description: 'Path to your IPA file. Optional if you use the _gym_ or _xcodebuild_ action',
                                        default_value: Actions.lane_context[SharedValues::IPA_OUTPUT_PATH],
                                        verify_block: proc do |value|
                                          UI.user_error!("Couldn't find ipa file at path '#{value}'") unless File.exist?(value)
@@ -172,6 +177,20 @@ module Fastlane
                                        description: "Array of options (shake,video_only_wifi,anonymous)",
                                        default_value: [])
         ]
+      end
+
+      def self.example_code
+        [
+          'testfairy(
+            api_key: "...",
+            ipa: "./ipa_file.ipa",
+            comment: "Build #{lane_context[SharedValues::BUILD_NUMBER]}",
+          )'
+        ]
+      end
+
+      def self.category
+        :beta
       end
 
       def self.output

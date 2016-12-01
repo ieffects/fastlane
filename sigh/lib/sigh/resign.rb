@@ -27,7 +27,8 @@ module Sigh
       # validate that we have valid values for all these params, we don't need to check signing_identity because `find_signing_identity` will only ever return a valid value
       validate_params(resign_path, ipa, provisioning_profiles)
       entitlements = "-e #{entitlements.shellescape}" if entitlements
-      provisioning_options = provisioning_profiles.map { |fst, snd| "-p #{[fst, snd].compact.map(&:shellescape).join('=')}" }.join(' ')
+
+      provisioning_options = create_provisioning_options(provisioning_profiles)
       version = "-n #{version}" if version
       display_name = "-d #{display_name.shellescape}" if display_name
       short_version = "--short-version #{short_version}" if short_version
@@ -67,9 +68,9 @@ module Sigh
     end
 
     def get_inputs(options, args)
-      ipa = args.first || find_ipa || ask('Path to ipa file: ')
+      ipa = args.first || find_ipa || UI.input('Path to ipa file: ')
       signing_identity = options.signing_identity || ask_for_signing_identity
-      provisioning_profiles = options.provisioning_profile || find_provisioning_profile || ask('Path to provisioning file: ')
+      provisioning_profiles = options.provisioning_profile || find_provisioning_profile || UI.input('Path to provisioning file: ')
       entitlements = options.entitlements || nil
       version = options.version_number || nil
       display_name = options.display_name || nil
@@ -113,6 +114,28 @@ module Sigh
       identities.key(signing_identity)
     end
 
+    def create_provisioning_options(provisioning_profiles)
+      # provisioning_profiles is passed either a hash (to be able to resign extensions/nested apps):
+      # (in that case the underlying resign.sh expects values given as "-p at.fastlane=/folder/mobile.mobileprovision -p at.fastlane.today=/folder/mobile.mobileprovision")
+      #   {
+      #     "at.fastlane" => "/folder/mobile.mobileprovision",
+      #     "at.fastlane.today" => "/folder/mobile.mobileprovision"
+      #   }
+      # or an array
+      # (resign.sh also takes "-p /folder/mobile.mobileprovision" as a param)
+      #   [
+      #        "/folder/mobile.mobileprovision"
+      #   ]
+      provisioning_profiles.map do |app_id, app_id_prov|
+        if app_id_prov
+          app_id_prov = File.expand_path(app_id_prov)
+        else
+          app_id = File.expand_path(app_id)
+        end
+        "-p #{[app_id, app_id_prov].compact.map(&:shellescape).join('=')}"
+      end.join(' ')
+    end
+
     def validate_params(resign_path, ipa, provisioning_profiles)
       validate_resign_path(resign_path)
       validate_ipa_file(ipa)
@@ -139,7 +162,7 @@ module Sigh
 
     def ask_for_signing_identity
       print_available_identities
-      ask('Signing Identity: ')
+      UI.input('Signing Identity: ')
     end
 
     # Hash of available signing identities

@@ -47,20 +47,41 @@ module FastlaneCore
       end
     end
 
+    # Show a message to the user to update to a new version of fastlane (or a sub-gem)
+    # Use this method, as this will detect the current Ruby environment and show an
+    # appropriate message to the user
     def self.show_update_message(gem_name, current_version)
       available = server_results[gem_name]
       puts ""
       puts '#######################################################################'.green
-      puts "# #{gem_name} #{available} is available. You are on #{current_version}.".green
+      if available
+        puts "# #{gem_name} #{available} is available. You are on #{current_version}.".green
+      else
+        puts "# An update for #{gem_name} is available. You are on #{current_version}.".green
+      end
       puts "# It is recommended to use the latest version.".green
-      puts "# Update using 'sudo gem update #{gem_name.downcase}'.".green
+      puts "# Please update using `#{self.update_command(gem_name: gem_name)}`.".green
+
       puts "# To see what's new, open https://github.com/fastlane/#{gem_name}/releases.".green if ENV["FASTLANE_HIDE_CHANGELOG"]
-      if Random.rand(5) == 1
+
+      if !Helper.bundler? && !Helper.contained_fastlane? && Random.rand(5) == 1
+        # We want to show this message from time to time, if the user doesn't use bundler, nor bundled fastlane
         puts '#######################################################################'.green
         puts "# Run `sudo gem cleanup` from time to time to speed up fastlane".green
       end
       puts '#######################################################################'.green
       Changelog.show_changes(gem_name, current_version) unless ENV["FASTLANE_HIDE_CHANGELOG"]
+    end
+
+    # The command that the user should use to update their mac
+    def self.update_command(gem_name: "fastlane")
+      if Helper.bundler?
+        "bundle update #{gem_name.downcase}"
+      elsif Helper.contained_fastlane?
+        "fastlane update_fastlane"
+      else
+        "sudo gem update #{gem_name.downcase}"
+      end
     end
 
     # Generate the URL on the main thread (since we're switching directory)
@@ -71,6 +92,7 @@ module FastlaneCore
 
       project_hash = p_hash(ARGV, gem_name)
       params["p_hash"] = project_hash if project_hash
+      params["platform"] = @platform if @platform # this has to be called after `p_hash`
 
       url += "?" + URI.encode_www_form(params) if params.count > 0
       return url
@@ -148,10 +170,17 @@ module FastlaneCore
       require 'credentials_manager'
 
       # check if this is an android project first because some of the same params exist for iOS and Android tools
-      value = android_app_identifier(args, gem_name) || ios_app_identifier(args)
+      app_identifier = android_app_identifier(args, gem_name)
+      @platform = nil # since have a state in-between runs
+      if app_identifier
+        @platform = :android
+      else
+        app_identifier = ios_app_identifier(args)
+        @platform = :ios if app_identifier
+      end
 
-      if value
-        return Digest::SHA256.hexdigest("p#{value}fastlan3_SAlt") # hashed + salted the bundle identifier
+      if app_identifier
+        return Digest::SHA256.hexdigest("p#{app_identifier}fastlan3_SAlt") # hashed + salted the bundle identifier
       end
 
       return nil

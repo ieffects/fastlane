@@ -39,7 +39,7 @@ module FastlaneCore
 
       def select_project(config)
         loop do
-          path = ask("Couldn't automatically detect the project file, please provide a path: ".yellow).strip
+          path = UI.input("Couldn't automatically detect the project file, please provide a path: ")
           if File.directory? path
             if path.end_with? ".xcworkspace"
               config[:workspace] = path
@@ -173,21 +173,27 @@ module FastlaneCore
     end
 
     def mac?
-      # Some projects have different values... we have to look for all of them
-      return true if build_settings(key: "PLATFORM_NAME") == "macosx"
-      return true if build_settings(key: "PLATFORM_DISPLAY_NAME") == "macOS"
-      return true if build_settings(key: "PLATFORM_DISPLAY_NAME") == "OS X"
-      false
+      supported_platforms.include?(:macOS)
     end
 
     def tvos?
-      return true if build_settings(key: "PLATFORM_NAME").to_s.include? "appletv"
-      return true if build_settings(key: "PLATFORM_DISPLAY_NAME").to_s.include? "tvOS"
-      false
+      supported_platforms.include?(:tvOS)
     end
 
     def ios?
-      !mac? && !tvos?
+      supported_platforms.include?(:iOS)
+    end
+
+    def supported_platforms
+      supported_platforms = build_settings(key: "SUPPORTED_PLATFORMS").split
+      supported_platforms.map do |platform|
+        case platform
+        when "macosx" then :macOS
+        when "iphonesimulator", "iphoneos" then :iOS
+        when "watchsimulator", "watchos" then :watchOS
+        when "appletvsimulator", "appletvos" then :tvOS
+        end
+      end.uniq.compact
     end
 
     def xcodebuild_parameters
@@ -195,6 +201,7 @@ module FastlaneCore
       proj << "-workspace #{options[:workspace].shellescape}" if options[:workspace]
       proj << "-scheme #{options[:scheme].shellescape}" if options[:scheme]
       proj << "-project #{options[:project].shellescape}" if options[:project]
+      proj << "-configuration #{options[:configuration].shellescape}" if options[:configuration]
 
       return proj
     end
@@ -204,8 +211,11 @@ module FastlaneCore
     #####################################################
 
     def build_xcodebuild_showbuildsettings_command
-      # We also need to pass the workspace and scheme to this command
-      command = "xcodebuild -showBuildSettings #{xcodebuild_parameters.join(' ')}"
+      # We also need to pass the workspace and scheme to this command.
+      #
+      # The 'clean' portion of this command is a workaround for an xcodebuild bug with Core Data projects.
+      # See: https://github.com/fastlane/fastlane/pull/5626
+      command = "xcodebuild clean -showBuildSettings #{xcodebuild_parameters.join(' ')}"
       command += " 2> /dev/null" if xcodebuild_suppress_stderr
       command
     end
@@ -216,11 +226,25 @@ module FastlaneCore
     def build_settings(key: nil, optional: true)
       unless @build_settings
         command = build_xcodebuild_showbuildsettings_command
-        @build_settings = Helper.backticks(command, print: false)
+
+        # xcode might hang here and retrying fixes the problem, see fastlane#4059
+        begin
+          timeout = FastlaneCore::Project.xcode_build_settings_timeout
+          retries = FastlaneCore::Project.xcode_build_settings_retries
+          @build_settings = FastlaneCore::Project.run_command(command, timeout: timeout, retries: retries, print: !self.xcodebuild_list_silent)
+        rescue Timeout::Error
+          UI.crash!("xcodebuild -showBuildSettings timed-out after #{timeout} seconds and #{retries} retries." \
+            " You can override the timeout value with the environment variable FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT," \
+            " and the number of retries with the environment variable FASTLANE_XCODEBUILD_SETTINGS_RETRIES ")
+        end
       end
 
       begin
-        result = @build_settings.split("\n").find { |c| c.split(" = ").first.strip == key }
+        result = @build_settings.split("\n").find do |c|
+          sp = c.split(" = ")
+          next if sp.length == 0
+          sp.first.strip == key
+        end
         return result.split(" = ").last
       rescue => ex
         return nil if optional # an optional value, we really don't care if something goes wrong
@@ -279,14 +303,14 @@ module FastlaneCore
       return @raw if @raw
 
       command = build_xcodebuild_list_command
-      UI.important(command) unless silent
 
       # xcode >= 6 might hang here if the user schemes are missing
       begin
         timeout = FastlaneCore::Project.xcode_list_timeout
-        @raw = FastlaneCore::Project.run_command(command, timeout: timeout)
+        retries = FastlaneCore::Project.xcode_list_retries
+        @raw = FastlaneCore::Project.run_command(command, timeout: timeout, retries: retries, print: !silent)
       rescue Timeout::Error
-        UI.user_error!("xcodebuild -list timed-out after #{timeout} seconds. You might need to recreate the user schemes." \
+        UI.user_error!("xcodebuild -list timed-out after #{timeout * retries} seconds. You might need to recreate the user schemes." \
           " You can override the timeout value with the environment variable FASTLANE_XCODE_LIST_TIMEOUT")
       end
 
@@ -301,13 +325,55 @@ module FastlaneCore
     end
 
     # @internal to module
-    # runs the specified command and kills it if timeouts
-    # @raises Timeout::Error if timeout is passed
-    # @returns the output
-    # Note: currently affected by fastlane/fastlane_core#102
-    def self.run_command(command, timeout: 0)
+    def self.xcode_list_retries
+      (ENV['FASTLANE_XCODE_LIST_RETRIES'] || 3).to_i
+    end
+
+    # @internal to module
+    def self.xcode_build_settings_timeout
+      (ENV['FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT'] || 10).to_i
+    end
+
+    # @internal to module
+    def self.xcode_build_settings_retries
+      (ENV['FASTLANE_XCODEBUILD_SETTINGS_RETRIES'] || 3).to_i
+    end
+
+    # @internal to module
+    # runs the specified command with the specified number of retries, killing each run if it times out
+    # @raises Timeout::Error if all tries result in a timeout
+    # @returns the output of the command
+    # Note: - currently affected by https://github.com/fastlane/fastlane/issues/1504
+    #       - retry feature added to solve https://github.com/fastlane/fastlane/issues/4059
+    def self.run_command(command, timeout: 0, retries: 0, print: true)
       require 'timeout'
-      @raw = Timeout.timeout(timeout) { `#{command}`.to_s }
+
+      UI.command(command) if print
+
+      result = ''
+
+      total_tries = retries + 1
+      try = 1
+      begin
+        Timeout.timeout(timeout) do
+          # Using Helper.backticks didn't work here. `Timeout` doesn't time out, and the command hangs forever
+          result = `#{command}`.to_s
+        end
+      rescue Timeout::Error
+        try_limit_reached = try >= total_tries
+
+        message = "Command timed out after #{timeout} seconds on try #{try} of #{total_tries}"
+        message += ", trying again..." unless try_limit_reached
+
+        UI.important(message)
+
+        raise if try_limit_reached
+
+        try += 1
+        retry
+      end
+
+      return result
     end
 
     private

@@ -31,7 +31,6 @@ module Scan
 
         options = []
         options += project_path_array
-        options << "-configuration '#{config[:configuration]}'" if config[:configuration]
         options << "-sdk '#{config[:sdk]}'" if config[:sdk]
         options << destination # generated in `detect_values`
         options << "-derivedDataPath '#{config[:derived_data_path]}'" if config[:derived_data_path]
@@ -63,6 +62,12 @@ module Scan
       def pipe
         # During building we just show the output in the terminal
         # Check out the ReportCollector class for more xcpretty things
+        pipe = ["| tee '#{xcodebuild_log_path}'"]
+
+        if Scan.config[:output_style] == 'raw'
+          return pipe
+        end
+
         formatter = []
         if Scan.config[:formatter]
           formatter << "-f `#{Scan.config[:formatter]}`"
@@ -83,7 +88,7 @@ module Scan
           formatter << "--test"
         end
 
-        ["| tee '#{xcodebuild_log_path}' | xcpretty #{formatter.join(' ')}"]
+        return pipe << ["| xcpretty #{formatter.join(' ')}"]
       end
 
       # Store the raw file

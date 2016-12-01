@@ -14,7 +14,7 @@ module Fastlane
           cmd << ["cd '#{podfile_folder}' &&"]
         end
 
-        cmd << ['bundle exec'] if File.exist?('Gemfile') && params[:use_bundle_exec]
+        cmd << ['bundle exec'] if params[:use_bundle_exec] && shell_out_should_use_bundle_exec?
         cmd << ['pod install']
 
         cmd << '--no-clean' unless params[:clean]
@@ -85,6 +85,24 @@ module Fastlane
 
       def self.authors
         ["KrauseFx", "tadpol", "birmacher", "Liquidsoul"]
+      end
+
+      def self.details
+        "If you use [CocoaPods](http://cocoapods.org) you can use the `cocoapods` integration to run `pod install` before building your app."
+      end
+
+      def self.example_code
+        [
+          'cocoapods',
+          'cocoapods(
+            clean: true,
+            podfile: "./CustomPodfile"
+          )'
+        ]
+      end
+
+      def self.category
+        :building
       end
     end
   end

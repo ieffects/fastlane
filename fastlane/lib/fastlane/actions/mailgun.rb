@@ -33,6 +33,7 @@ module Fastlane
           # This is here just for while due to the transition, should use apikey instead
           FastlaneCore::ConfigItem.new(key: :mailgun_apikey,
                                        env_name: "MAILGUN_APIKEY",
+                                       sensitive: true,
                                        optional: true,
                                        description: "Mailgun apikey for your mail. Please use postmaster instead"),
 
@@ -41,6 +42,7 @@ module Fastlane
                                        description: "Mailgun sandbox domain postmaster for your mail"),
           FastlaneCore::ConfigItem.new(key: :apikey,
                                        env_name: "MAILGUN_APIKEY",
+                                       sensitive: true,
                                        description: "Mailgun apikey for your mail"),
           FastlaneCore::ConfigItem.new(key: :to,
                                        env_name: "MAILGUN_TO",
@@ -127,6 +129,31 @@ module Fastlane
           html_template = eth.load("mailgun_html_template")
         end
         eth.render(html_template, hash)
+      end
+
+      def self.example_code
+        [
+          'mailgun(
+            to: "fastlane@krausefx.com",
+            success: true,
+            message: "This is the mail\'s content"
+          )',
+          'mailgun(
+            postmaster: "MY_POSTMASTER",
+            apikey: "MY_API_KEY",
+            to: "DESTINATION_EMAIL",
+            from: "EMAIL_FROM_NAME",
+            success: true,
+            message: "Mail Body",
+            app_link: "http://www.myapplink.com",
+            ci_build_link: "http://www.mycibuildlink.com",
+            template_path: "HTML_TEMPLATE_PATH"
+          )'
+        ]
+      end
+
+      def self.category
+        :notifications
       end
     end
   end

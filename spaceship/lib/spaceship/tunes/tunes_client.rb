@@ -1,3 +1,5 @@
+require "securerandom"
+
 module Spaceship
   # rubocop:disable Metrics/ClassLength
   class TunesClient < Spaceship::Client
@@ -66,9 +68,29 @@ module Spaceship
 
     # Set a new team ID which will be used from now on
     def team_id=(team_id)
+      # First, we verify the team actually exists, because otherwise iTC would return the
+      # following confusing error message
+      #
+      #     invalid content provider id
+      #
+      available_teams = teams.collect do |team|
+        (team["contentProvider"] || {})["contentProviderId"]
+      end
+
+      result = available_teams.find do |available_team_id|
+        team_id.to_s == available_team_id.to_s
+      end
+
+      unless result
+        raise ITunesConnectError.new, "Could not set team ID to '#{team_id}', only found the following available teams: #{available_teams.join(', ')}"
+      end
+
       response = request(:post) do |req|
         req.url "ra/v1/session/webSession"
-        req.body = { contentProviderId: team_id }.to_json
+        req.body = {
+          contentProviderId: team_id,
+          dsId: user_detail_data.ds_id # https://github.com/fastlane/fastlane/issues/6711
+        }.to_json
         req.headers['Content-Type'] = 'application/json'
       end
 
@@ -83,15 +105,21 @@ module Spaceship
       t_id = (ENV['FASTLANE_ITC_TEAM_ID'] || '').strip
       t_name = (ENV['FASTLANE_ITC_TEAM_NAME'] || '').strip
 
-      if t_name.length > 0
+      if t_name.length > 0 && t_id.length.zero? # we prefer IDs over names, they are unique
+        puts "Looking for iTunes Connect Team with name #{t_name}" if $verbose
+
         teams.each do |t|
           t_id = t['contentProvider']['contentProviderId'].to_s if t['contentProvider']['name'].casecmp(t_name.downcase).zero?
         end
+
+        puts "Could not find team with name '#{t_name}', trying to fallback to default team" if t_id.length.zero?
       end
 
       t_id = teams.first['contentProvider']['contentProviderId'].to_s if teams.count == 1
 
       if t_id.length > 0
+        puts "Looking for iTunes Connect Team with ID #{t_id}" if $verbose
+
         # actually set the team id here
         self.team_id = t_id
         return
@@ -100,6 +128,16 @@ module Spaceship
       # user didn't specify a team... #thisiswhywecanthavenicethings
       loop do
         puts "Multiple iTunes Connect teams found, please enter the number of the team you want to use: "
+        puts "Note: to automatically choose the team, provide either the iTunes Connect Team ID, or the Team Name in your fastlane/Appfile:"
+        puts "Alternatively you can pass the team name or team ID using the `FASTLANE_ITC_TEAM_ID` or `FASTLANE_ITC_TEAM_NAME` environment variable"
+        first_team = teams.first["contentProvider"]
+        puts ""
+        puts "  itc_team_id \"#{first_team['contentProviderId']}\""
+        puts ""
+        puts "or"
+        puts ""
+        puts "  itc_team_name \"#{first_team['name']}\""
+        puts ""
         teams.each_with_index do |team, i|
           puts "#{i + 1}) \"#{team['contentProvider']['name']}\" (#{team['contentProvider']['contentProviderId']})"
         end
@@ -141,14 +179,20 @@ module Spaceship
         logger.debug("Request was successful")
       end
 
-      handle_response_hash = lambda do |hash|
+      # We pass on the `current_language` so that the error message tells the user
+      # what language the error was caused in
+      handle_response_hash = lambda do |hash, current_language = nil|
         errors = []
-        if hash.kind_of? Hash
-          hash.each do |key, value|
-            errors += handle_response_hash.call(value)
+        if hash.kind_of?(Hash)
+          current_language ||= hash["language"]
 
-            if key == 'errorKeys' and value.kind_of? Array and value.count > 0
-              errors += value
+          hash.each do |key, value|
+            errors += handle_response_hash.call(value, current_language)
+
+            next unless key == 'errorKeys' and value.kind_of?(Array) and value.count > 0
+            # Prepend the error with the language so it's easier to understand for the user
+            errors += value.collect do |current_error_message|
+              current_language ? "[#{current_language}]: #{current_error_message}" : current_error_message
             end
           end
         elsif hash.kind_of? Array
@@ -222,6 +266,7 @@ module Spaceship
     #   can't be changed after you submit your first build.
     def create_application!(name: nil, primary_language: nil, version: nil, sku: nil, bundle_id: nil, bundle_id_suffix: nil, company_name: nil)
       # First, we need to fetch the data from Apple, which we then modify with the user's values
+      primary_language ||= "English"
       app_type = 'ios'
       r = request(:get, "ra/apps/create/v2/?platformString=#{app_type}")
       data = parse_response(r, 'data')
@@ -231,7 +276,8 @@ module Spaceship
       data['versionString'] = { value: version }
       data['name'] = { value: name }
       data['bundleId'] = { value: bundle_id }
-      data['primaryLanguage'] = { value: primary_language || 'English' }
+      data['primaryLanguage'] = { value: primary_language }
+      data['primaryLocaleCode'] = { value: primary_language.to_itc_locale }
       data['vendorId'] = { value: sku }
       data['bundleIdSuffix'] = { value: bundle_id_suffix }
       data['companyName'] = { value: company_name } if company_name
@@ -285,14 +331,14 @@ module Spaceship
     # @!group AppVersions
     #####################################################
 
-    def app_version(app_id, is_live)
+    def app_version(app_id, is_live, platform: nil)
       raise "app_id is required" unless app_id
 
       # First we need to fetch the IDs for the edit / live version
       r = request(:get, "ra/apps/#{app_id}/overview")
       platforms = parse_response(r, 'data')['platforms']
 
-      platform = Spaceship::Tunes::AppVersionCommon.find_platform(platforms)
+      platform = Spaceship::Tunes::AppVersionCommon.find_platform(platforms, search_platform: platform)
       return nil unless platform
 
       version_id = Spaceship::Tunes::AppVersionCommon.find_version_id(platform, is_live)
@@ -441,13 +487,27 @@ module Spaceship
     # @param app_version (AppVersion): The version of your app
     # @param upload_image (UploadFile): The image to upload
     # @param device (string): The target device
+    # @param is_messages (Bool): True if the screenshot is for iMessage
     # @return [JSON] the response
-    def upload_screenshot(app_version, upload_image, device)
+    def upload_screenshot(app_version, upload_image, device, is_messages)
       raise "app_version is required" unless app_version
       raise "upload_image is required" unless upload_image
       raise "device is required" unless device
 
-      du_client.upload_screenshot(app_version, upload_image, content_provider_id, sso_token_for_image, device)
+      du_client.upload_screenshot(app_version, upload_image, content_provider_id, sso_token_for_image, device, is_messages)
+    end
+
+    # Uploads an iMessage screenshot
+    # @param app_version (AppVersion): The version of your app
+    # @param upload_image (UploadFile): The image to upload
+    # @param device (string): The target device
+    # @return [JSON] the response
+    def upload_messages_screenshot(app_version, upload_image, device)
+      raise "app_version is required" unless app_version
+      raise "upload_image is required" unless upload_image
+      raise "device is required" unless device
+
+      du_client.upload_messages_screenshot(app_version, upload_image, content_provider_id, sso_token_for_image, device)
     end
 
     # Uploads the transit app file
@@ -498,7 +558,7 @@ module Spaceship
       return @cached if @cached
       r = request(:get, '/WebObjects/iTunesConnect.woa/ra/user/detail')
       data = parse_response(r, 'data')
-      @cached ||= Spaceship::Tunes::UserDetail.factory(data)
+      @cached = Spaceship::Tunes::UserDetail.factory(data)
     end
 
     #####################################################
@@ -515,9 +575,11 @@ module Spaceship
     #####################################################
 
     # @param (testing_type) internal or external
-    def build_trains(app_id, testing_type)
+    def build_trains(app_id, testing_type, platform: nil)
       raise "app_id is required" unless app_id
-      r = request(:get, "ra/apps/#{app_id}/trains/?testingType=#{testing_type}")
+      url = "ra/apps/#{app_id}/trains/?testingType=#{testing_type}"
+      url += "&platform=#{platform}" unless platform.nil?
+      r = request(:get, url)
       parse_response(r, 'data')
     end
 
@@ -546,13 +608,15 @@ module Spaceship
     end
 
     # All build trains, even if there is no TestFlight
-    def all_build_trains(app_id: nil, platform: nil)
-      r = request(:get, "ra/apps/#{app_id}/buildHistory?platform=#{platform || 'ios'}")
+    def all_build_trains(app_id: nil, platform: 'ios')
+      platform = 'ios' if platform.nil?
+      r = request(:get, "ra/apps/#{app_id}/buildHistory?platform=#{platform}")
       handle_itc_response(r.body)
     end
 
-    def all_builds_for_train(app_id: nil, train: nil, platform: nil)
-      r = request(:get, "ra/apps/#{app_id}/trains/#{train}/buildHistory?platform=#{platform || 'ios'}")
+    def all_builds_for_train(app_id: nil, train: nil, platform: 'ios')
+      platform = 'ios' if platform.nil?
+      r = request(:get, "ra/apps/#{app_id}/trains/#{train}/buildHistory?platform=#{platform}")
       handle_itc_response(r.body)
     end
 
@@ -745,7 +809,13 @@ module Spaceship
       parse_response(r, 'data')['users']
     end
 
-    def create_tester!(tester: nil, email: nil, first_name: nil, last_name: nil)
+    def groups
+      return @cached_groups if @cached_groups
+      r = request(:get, '/WebObjects/iTunesConnect.woa/ra/users/pre/ext')
+      @cached_groups = parse_response(r, 'data')['groups']
+    end
+
+    def create_tester!(tester: nil, email: nil, first_name: nil, last_name: nil, groups: nil)
       url = tester.url[:create]
       raise "Action not provided for this tester type." unless url
 
@@ -763,6 +833,9 @@ module Spaceship
               value: true
             }
           }
+      if groups
+        tester_data[:groups] = groups.map { |x| { "id" => x } }
+      end
 
       data = { testers: [tester_data] }
 
@@ -818,6 +891,55 @@ module Spaceship
     end
 
     #####################################################
+    # @!group Sandbox Testers
+    #####################################################
+    def sandbox_testers(tester_class)
+      url = tester_class.url[:index]
+      r = request(:get, url)
+      parse_response(r, 'data')
+    end
+
+    def create_sandbox_tester!(tester_class: nil, email: nil, password: nil, first_name: nil, last_name: nil, country: nil)
+      url = tester_class.url[:create]
+      r = request(:post) do |req|
+        req.url url
+        req.body = {
+          user: {
+            emailAddress: { value: email },
+            password: { value: password },
+            confirmPassword: { value: password },
+            firstName: { value: first_name },
+            lastName: { value: last_name },
+            storeFront: { value: country },
+            birthDay: { value: 1 },
+            birthMonth: { value: 1 },
+            secretQuestion: { value: SecureRandom.hex },
+            secretAnswer: { value: SecureRandom.hex },
+            sandboxAccount: nil
+          }
+        }.to_json
+        req.headers['Content-Type'] = 'application/json'
+      end
+      parse_response(r, 'data')['user']
+    end
+
+    def delete_sandbox_testers!(tester_class, emails)
+      url = tester_class.url[:delete]
+      request(:post) do |req|
+        req.url url
+        req.body = emails.map do |email|
+          {
+            emailAddress: {
+              value: email
+            }
+          }
+        end.to_json
+        req.headers['Content-Type'] = 'application/json'
+      end
+      true
+    end
+
+    #####################################################
     # @!group State History
     #####################################################
     def versions_history(app_id, platform)
@@ -855,6 +977,24 @@ module Spaceship
     def app_promocodes_history(app_id: nil)
       r = request(:get, "ra/apps/#{app_id}/promocodes/history")
       parse_response(r, 'data')['requests']
+    end
+
+    #####################################################
+    # @!group reject
+    #####################################################
+
+    def reject!(app_id, version)
+      raise "app_id is required" unless app_id
+      raise "version is required" unless version
+
+      r = request(:post) do |req|
+        req.url "ra/apps/#{app_id}/versions/#{version}/reject"
+        req.headers['Content-Type'] = 'application/json'
+        req.body = app_id.to_s
+      end
+
+      handle_itc_response(r.body)
+      parse_response(r, 'data')
     end
 
     private

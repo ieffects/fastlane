@@ -5,7 +5,7 @@ module Fastlane
         Actions.verify_gem!('danger')
         cmd = []
 
-        cmd << 'bundle exec' if File.exist?('Gemfile') && params[:use_bundle_exec]
+        cmd << 'bundle exec' if params[:use_bundle_exec] && shell_out_should_use_bundle_exec?
         cmd << 'danger'
         cmd << '--verbose' if params[:verbose]
 
@@ -24,7 +24,10 @@ module Fastlane
       end
 
       def self.details
-        "More information: https://github.com/danger/danger"
+        [
+          "Formalize your Pull Request etiquette.",
+          "More information: https://github.com/danger/danger"
+        ].join("\n")
       end
 
       def self.available_options
@@ -52,6 +55,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :github_api_token,
                                        env_name: "FL_DANGER_GITHUB_API_TOKEN",
                                        description: "GitHub API token for danger",
+                                       sensitive: true,
                                        is_string: true,
                                        optional: true)
         ]
@@ -59,6 +63,22 @@ module Fastlane
 
       def self.is_supported?(platform)
         true
+      end
+
+      def self.example_code
+        [
+          'danger',
+          'danger(
+            danger_id: "unit-tests",
+            dangerfile: "tests/MyOtherDangerFile",
+            github_api_token: ENV["GITHUB_API_TOKEN"],
+            verbose: true
+          )'
+        ]
+      end
+
+      def self.category
+        :misc
       end
 
       def self.authors

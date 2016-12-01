@@ -80,7 +80,7 @@ module Fastlane
       end
 
       def self.details
-        "Lets you execute remote commands via ssh using username/password or ssh-agent"
+        "Lets you execute remote commands via ssh using username/password or ssh-agent. If one of the commands in command-array returns non 0 - it fails."
       end
 
       def self.available_options
@@ -93,6 +93,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :password,
                                        short_option: "-p",
                                        env_name: "FL_SSH_PASSWORD",
+                                       sensitive: true,
                                        description: "Password",
                                        optional: true,
                                        is_string: true),
@@ -138,6 +139,23 @@ module Fastlane
 
       def self.is_supported?(platform)
         true
+      end
+
+      def self.example_code
+        [
+          'ssh(
+            host: "dev.januschka.com",
+            username: "root",
+            commands: [
+              "date",
+              "echo 1 > /tmp/file1"
+            ]
+          )'
+        ]
+      end
+
+      def self.category
+        :misc
       end
     end
   end

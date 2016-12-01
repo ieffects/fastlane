@@ -32,12 +32,16 @@ describe Spaceship do
       expect(spaceship1.device.all.count).to eq(4)
     end
 
+    it "DeviceDisabled" do
+      expect(spaceship1.device.all(include_disabled: true).count).to eq(6)
+    end
+
     it "Certificate" do
       expect(spaceship1.certificate.all.count).to eq(3)
     end
 
     it "ProvisioningProfile" do
-      expect(spaceship1.provisioning_profile.all.count).to eq(33)
+      expect(spaceship1.provisioning_profile.all.count).to eq(3)
     end
 
     it "App" do
@@ -55,7 +59,7 @@ describe Spaceship do
       it "shouldn't fail if provisioning_profile is invoked before app and device" do
         clean_launcher = Spaceship::Launcher.new
         clean_launcher.login(username, password)
-        expect(clean_launcher.provisioning_profile.all.count).to eq(33)
+        expect(clean_launcher.provisioning_profile.all.count).to eq(3)
       end
     end
   end

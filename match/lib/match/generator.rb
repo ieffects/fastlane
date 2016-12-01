@@ -10,7 +10,8 @@ module Match
         output_path: output_path,
         force: true, # we don't need a certificate without its private key, we only care about a new certificate
         username: params[:username],
-        team_id: params[:team_id]
+        team_id: params[:team_id],
+        keychain_path: FastlaneCore::Helper.keychain_path(params[:keychain_name])
       })
 
       Cert.config = arguments
@@ -33,17 +34,15 @@ module Match
     end
 
     # @return (String) The UUID of the newly generated profile
-    def self.generate_provisioning_profile(params: nil, prov_type: nil, certificate_id: nil)
+    def self.generate_provisioning_profile(params: nil, prov_type: nil, certificate_id: nil, app_identifier: nil)
       require 'sigh'
 
-      prov_type = :enterprise if Match.enterprise? && ENV["SIGH_PROFILE_ENTERPRISE"] && !params[:type] == "development"
+      prov_type = Match.profile_type_sym(params[:type])
 
-      profile_name = ["match", profile_type_name(prov_type), params[:app_identifier]].join(" ")
+      profile_name = ["match", profile_type_name(prov_type), app_identifier].join(" ")
 
-      arguments = FastlaneCore::Configuration.create(Sigh::Options.available_options, {
-        app_identifier: params[:app_identifier],
-        adhoc: prov_type == :adhoc,
-        development: prov_type == :development,
+      values = {
+        app_identifier: app_identifier,
         output_path: File.join(params[:workspace], "profiles", prov_type.to_s),
         username: params[:username],
         force: true,
@@ -51,7 +50,12 @@ module Match
         provisioning_name: profile_name,
         ignore_profiles_with_different_name: true,
         team_id: params[:team_id]
-      })
+      }
+
+      values[:adhoc] = true if prov_type == :adhoc
+      values[:development] = true if prov_type == :development
+
+      arguments = FastlaneCore::Configuration.create(Sigh::Options.available_options, values)
 
       Sigh.config = arguments
       path = Sigh::Manager.start
